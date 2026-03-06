@@ -1,20 +1,32 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS web-build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web-build
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.25-alpine AS go-build
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS go-build
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY --from=web-build /web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/rhythmiq ./cmd/server
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+RUN set -eux; \
+    GOOS="${TARGETOS:-$(go env GOOS)}"; \
+    GOARCH="${TARGETARCH:-$(go env GOARCH)}"; \
+    GOARM=""; \
+    if [ "$GOARCH" = "arm" ]; then \
+      if [ -n "${TARGETVARIANT:-}" ]; then GOARM="${TARGETVARIANT#v}"; else GOARM="$(go env GOARM)"; fi; \
+    fi; \
+    export CGO_ENABLED=0 GOOS GOARCH; \
+    if [ -n "$GOARM" ]; then export GOARM; fi; \
+    go build -o /out/rhythmiq ./cmd/server
 
 FROM alpine:3.21
 RUN addgroup -S app && adduser -S app -G app && apk add --no-cache ca-certificates tzdata
