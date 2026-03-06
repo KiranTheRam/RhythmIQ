@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+rhythmiq.db
+node_modules
+web/node_modules
+web/dist
+web/tsconfig.tsbuildinfo
+.vscode
+.idea

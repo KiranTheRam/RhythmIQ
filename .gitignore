@@ -1,0 +1,22 @@
+# Go
+bin/
+*.exe
+*.test
+*.out
+*.log
+rhythmiq.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Frontend
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,49 @@
+services:
+  rhythmiq:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rhythmiq
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      RHYTHMIQ_ADDR: ":8080"
+      RHYTHMIQ_DB_DRIVER: "${RHYTHMIQ_DB_DRIVER:-postgres}"
+      RHYTHMIQ_DB_PATH: "/data/rhythmiq.db"
+      RHYTHMIQ_DB_DSN: "postgres://${POSTGRES_USER:-rhythmiq}:${POSTGRES_PASSWORD:-rhythmiq}@postgres:5432/${POSTGRES_DB:-rhythmiq}?sslmode=disable"
+      RHYTHMIQ_BASE_URL: "${RHYTHMIQ_BASE_URL:-http://127.0.0.1:8080}"
+      SPOTIFY_REDIRECT_URL: "${SPOTIFY_REDIRECT_URL:-http://127.0.0.1:8080/api/auth/callback}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - rhythmiq_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rhythmiq-postgres
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-rhythmiq}"
+      POSTGRES_USER: "${POSTGRES_USER:-rhythmiq}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-rhythmiq}"
+    volumes:
+      - rhythmiq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rhythmiq} -d ${POSTGRES_DB:-rhythmiq}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  rhythmiq_data:
+  rhythmiq_pgdata:
