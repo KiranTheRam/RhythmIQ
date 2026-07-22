@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +21,11 @@ import (
 )
 
 func main() {
+	// Go's built-in table has no entry for .webmanifest, and the host's
+	// /etc/mime.types may not either; without it the manifest is served as
+	// text/plain and the install prompt never appears.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+
 	cfg := config.Load()
 	if err := validateSecurityConfig(cfg); err != nil {
 		log.Fatalf("invalid security configuration: %v", err)

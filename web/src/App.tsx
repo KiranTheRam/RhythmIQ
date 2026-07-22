@@ -15,6 +15,8 @@ import type {
 
 const numbers = new Intl.NumberFormat('en-US')
 const PERIOD_ORDER: PeriodKey[] = ['week', 'month', 'year']
+// The server's labels ("This week") are too long for a phone's tab bar.
+const PERIOD_TABS: Record<PeriodKey, string> = { week: 'Week', month: 'Month', year: 'Year' }
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function App() {
@@ -222,7 +224,11 @@ function App() {
                   aria-current={key === period ? 'true' : undefined}
                   onClick={() => selectPeriod(key)}
                 >
-                  {entry.label}
+                  {/* One button, two registers: the long label reads as an
+                      editorial tab on a wide screen, the short one as a tab
+                      bar item on a phone. CSS picks. */}
+                  <span className="period-long">{entry.label}</span>
+                  <span className="period-short">{PERIOD_TABS[key]}</span>
                 </button>
               )
             })}

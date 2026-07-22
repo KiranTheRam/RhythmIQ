@@ -443,6 +443,10 @@ a {
   transition: color 250ms ease, border-color 250ms ease;
 }
 
+.period-short {
+  display: none;
+}
+
 .period:hover {
   color: var(--paper-dim);
 }
@@ -1301,9 +1305,13 @@ a {
     gap: 0.5rem 1rem;
   }
 
-  /* Four items wrap into a cramped block on a phone; the timestamp is the
-     least useful of them. */
-  .masthead .credit:last-of-type {
+  .masthead-meta {
+    gap: 1rem;
+  }
+
+  /* Four items overrun the wordmark on a phone. The timestamp and the account
+     name are the two the page can speak for itself, so the actions stay. */
+  .masthead .credit {
     display: none;
   }
 
@@ -1381,6 +1389,83 @@ a {
       radial-gradient(120% 80% at 50% 0%, hsl(var(--wrap-h) 62% 26%) 0%, transparent 60%),
       linear-gradient(165deg, hsl(var(--wrap-h) 55% 17%) 0%, hsl(calc(var(--wrap-h) + 25) 60% 7%) 100%);
     transition: background 500ms ease;
+  }
+}
+
+/* Mobile layout: the period switcher becomes a tab bar ------------------- */
+
+/* Below this width the page stops being a spread with a sticky rule at the
+   top and becomes an app: one column, thumb-reachable navigation pinned to
+   the bottom edge. The wrapped story sits at z-index 100 and covers it. */
+@media (max-width: 820px) {
+  .periods {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    margin: 0;
+    padding:
+      0
+      max(0.5rem, env(safe-area-inset-right))
+      env(safe-area-inset-bottom)
+      max(0.5rem, env(safe-area-inset-left));
+    border-top: 1px solid var(--rule);
+    border-bottom: 0;
+    background: color-mix(in oklab, var(--ink), transparent 8%);
+    /* The bar is chrome, not content, so it should not fly in with the page. */
+    animation: none;
+  }
+
+  .period {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3.4rem;
+    padding: 0.9rem 0.25rem 1rem;
+    font-size: 0.74rem;
+    font-variation-settings: 'wdth' 100;
+    letter-spacing: 0.16em;
+    border-bottom: 0;
+  }
+
+  /* The active marker moves to the top edge, where a tab bar expects it. */
+  .period::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    width: 2.5rem;
+    height: 2px;
+    background: var(--accent);
+    transform: translateX(-50%) scaleX(0);
+    transition: transform 250ms cubic-bezier(0.2, 0.7, 0.3, 1), background 600ms ease;
+  }
+
+  .period.is-active::before {
+    transform: translateX(-50%) scaleX(1);
+  }
+
+  .period-long {
+    display: none;
+  }
+
+  .period-short {
+    display: block;
+  }
+
+  /* Clears the bar so the last section is never trapped underneath it. */
+  .stage {
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
+  }
+
+  .source {
+    margin-top: 1.5rem;
   }
 }
 
