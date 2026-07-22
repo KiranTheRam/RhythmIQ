@@ -348,10 +348,21 @@ a {
   object-fit: cover;
 }
 
+/* Stacked, with the portrait above the copy. The banner is a fixed height and
+   its contents are bottom-aligned, so a no.1 whose name runs to three lines
+   used to drag the portrait up the screen — the year's banner sat higher than
+   the week's. Filling the banner and pinning the portrait to the top with an
+   auto margin holds it still whatever the name does. */
 @media (max-width: 820px) {
+  .hero {
+    align-items: stretch;
+  }
+
   .hero-inner {
-    grid-template-columns: 1fr;
-    justify-items: start;
+    display: flex;
+    flex-direction: column;
+    /* Resets the grid's `end`, which would read as "right" on this axis. */
+    align-items: stretch;
     gap: 1.75rem;
     padding-top: 6rem;
   }
@@ -359,6 +370,7 @@ a {
   .hero-portrait {
     order: -1;
     width: clamp(140px, 40vw, 220px);
+    margin-bottom: auto;
   }
 }
 
