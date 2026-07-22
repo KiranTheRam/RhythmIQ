@@ -1,10 +1,30 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+/**
+ * Bump whenever the icon art changes.
+ *
+ * Vite does not fingerprint files in public/, so the icons keep stable names
+ * across builds. iOS caches the home screen icon by URL and will happily show
+ * last year's art forever; this query gives it a URL it has never seen.
+ */
+const ICON_VERSION = '2'
+
+/** Substitutes ICON_VERSION into index.html so the number lives in one place. */
+function iconVersion(): Plugin {
+  return {
+    name: 'rhythmiq-icon-version',
+    transformIndexHtml(html) {
+      return html.replaceAll('%ICON_VERSION%', ICON_VERSION)
+    }
+  }
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    iconVersion(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.png', 'icon-192.png', 'apple-touch-icon.png'],
@@ -22,17 +42,32 @@ export default defineConfig({
         orientation: 'portrait',
         categories: ['music', 'lifestyle'],
         icons: [
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: 'icon.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: `icon-192.png?v=${ICON_VERSION}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: `icon.png?v=${ICON_VERSION}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
           // Kept separate from 'any': maskable art needs its own safe-zone
           // padding or Android crops the logo.
-          { src: 'icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+          {
+            src: `icon-maskable-192.png?v=${ICON_VERSION}`,
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
+          {
+            src: `icon-maskable-512.png?v=${ICON_VERSION}`,
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
+          }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         navigateFallbackDenylist: [/^\/api\//],
+        // The icons are precached under their bare names, so ?v= would miss
+        // every time. Stripping it still yields the current art, because
+        // precache entries are revisioned by content. Extends the default list
+        // rather than replacing it.
+        ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^v$/],
         runtimeCaching: [
           {
             // Webfonts and artwork are cross-origin, so they need explicit

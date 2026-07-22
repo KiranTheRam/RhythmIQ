@@ -7,13 +7,14 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#0c0b10" />
-    <link rel="icon" type="image/png" href="/icon.png" />
+    <!-- ?v= is substituted at build time; bump ICON_VERSION in vite.config.ts. -->
+    <link rel="icon" type="image/png" href="/icon.png?v=%ICON_VERSION%" />
 
     <!-- iOS ignores the web app manifest, so installation needs its own tags. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RhythmIQ" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=%ICON_VERSION%" />
     <meta name="mobile-web-app-capable" content="yes" />
 
     <title>RhythmIQ</title>
