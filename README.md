@@ -1,28 +1,36 @@
 # RhythmIQ
 
-RhythmIQ is a full-stack Go + React Spotify analytics app that produces Wrapped-style insights year-round.
+RhythmIQ is a Go + React dashboard for your Spotify listening, read three ways: this week, this month, and this year.
 
-## What It Does
+## What It Shows
 
-- Spotify OAuth authentication (Authorization Code flow)
-- Collects and stores snapshot metrics over time (SQLite or Postgres)
-- Wrapped-style metrics:
-  - Top artists/tracks for short, medium, and long term
-  - Estimated daily and yearly listening minutes
-  - Genre gravity and diversity
-  - Consistency, discovery, and replay scores
-  - Library stats (saved tracks, playlists, followed artists)
-- Historical trend analysis for dashboards and charting
-- Recommendation engine:
-  - Built-in heuristic recommendations
-  - Optional OpenAI-generated narrative insights (`OPENAI_API_KEY`)
-- Desktop-first web UI with responsive mobile layout
-- Installable PWA with offline caching
+Each time window has its own top artists, top tracks, and genre mix. Alongside them:
+
+- **On repeat** — the single most repeated track in your recent plays
+- **When you listened** — a 24-hour ridgeline and weekday breakdown, bucketed in your own timezone
+- **New to you** — artists in the current window that are absent from your year
+- **In your library** — saved tracks, playlists, artists followed
+
+The page takes its accent colour from the photograph of whoever is at no.1, so switching
+periods re-tints the whole spread.
+
+### Where the numbers come from
+
+Spotify does not expose true listening minutes, so nothing here extrapolates one.
+
+| Window | Source | What is measurable |
+| --- | --- | --- |
+| Week | `recently-played` (last 50 plays) | Real play counts, real timestamps, real minutes |
+| Month | `top/*?time_range=short_term` (~4 weeks) | Rank order only |
+| Year | `top/*?time_range=long_term` (~12 months) | Rank order only |
+
+Play counts appear only on the week, because it is the only window built from
+actual playback events. The month and year views show rank and track duration.
 
 ## Tech Stack
 
 - Backend: Go, Chi, SQLite (`modernc.org/sqlite`), Postgres (`pgx`)
-- Frontend: React + TypeScript + Vite + Recharts
+- Frontend: React + TypeScript + Vite (no charting library; the visuals are hand-built SVG and CSS)
 - PWA: `vite-plugin-pwa`
 
 ## Project Structure
@@ -30,7 +38,7 @@ RhythmIQ is a full-stack Go + React Spotify analytics app that produces Wrapped-
 - `cmd/server/main.go`: app entrypoint + static serving
 - `internal/api`: HTTP handlers (`/api/...`)
 - `internal/spotify`: OAuth + Spotify API client
-- `internal/service`: metrics and recommendation logic
+- `internal/service`: dashboard assembly
 - `internal/db`: persistence schema + repository
 - `web`: React dashboard and PWA app
 
@@ -139,16 +147,12 @@ Vite proxies `/api` calls to `http://127.0.0.1:8080`.
 - `GET /api/auth/login`
 - `GET /api/auth/callback`
 - `POST /api/auth/logout`
-- `POST /api/metrics/refresh`
-- `GET /api/metrics/latest`
-- `GET /api/metrics/history?days=180`
-- `GET /api/recommendations/insights`
+- `GET /api/dashboard`
+- `POST /api/dashboard/refresh`
 
 ## Notes
 
-- Historical analysis improves as more snapshots are collected.
 - Auth is session-based per browser/client (multiple users can use the same deployment concurrently).
-- Server auto-collects snapshots periodically for all stored users.
-- OpenAI integration is optional; without `OPENAI_API_KEY`, heuristic recommendations are still generated.
-- API now includes response hardening headers and endpoint rate limits for auth and costly generation/refresh paths.
+- Each user's dashboard is cached in the database and refreshed in the background every 6 hours, so page loads never wait on Spotify.
+- API includes response hardening headers and endpoint rate limits for auth and refresh paths.
 - Stored Spotify access/refresh tokens are encrypted at rest in both Postgres and SQLite.

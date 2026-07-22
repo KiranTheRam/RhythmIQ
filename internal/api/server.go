@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,29 +25,25 @@ const oauthStateCookieName = "rhythmiq_spotify_oauth_state"
 
 // Server hosts all HTTP handlers.
 type Server struct {
-	cfg          config.Config
-	repo         db.Repository
-	spotify      *spotify.Client
-	metrics      *service.MetricsService
-	recommenders *service.RecommendationService
-	sessions     *sessionManager
-	authLimiter  *rateLimiter
-	dataLimiter  *rateLimiter
-	aiLimiter    *rateLimiter
+	cfg         config.Config
+	repo        db.Repository
+	spotify     *spotify.Client
+	dashboards  *service.DashboardService
+	sessions    *sessionManager
+	authLimiter *rateLimiter
+	dataLimiter *rateLimiter
 }
 
 // NewServer builds server dependencies.
-func NewServer(cfg config.Config, repo db.Repository, spotifyClient *spotify.Client, metrics *service.MetricsService, recommenders *service.RecommendationService) *Server {
+func NewServer(cfg config.Config, repo db.Repository, spotifyClient *spotify.Client, dashboards *service.DashboardService) *Server {
 	return &Server{
-		cfg:          cfg,
-		repo:         repo,
-		spotify:      spotifyClient,
-		metrics:      metrics,
-		recommenders: recommenders,
-		sessions:     newSessionManager(cfg.SessionSecret, cfg.ForceSecureCookies),
-		authLimiter:  newRateLimiter(30, time.Minute),
-		dataLimiter:  newRateLimiter(20, time.Minute),
-		aiLimiter:    newRateLimiter(12, time.Minute),
+		cfg:         cfg,
+		repo:        repo,
+		spotify:     spotifyClient,
+		dashboards:  dashboards,
+		sessions:    newSessionManager(cfg.SessionSecret, cfg.ForceSecureCookies),
+		authLimiter: newRateLimiter(30, time.Minute),
+		dataLimiter: newRateLimiter(20, time.Minute),
 	}
 }
 
@@ -70,11 +65,8 @@ func (s *Server) Routes() http.Handler {
 	r.With(rateLimitMiddleware(s.authLimiter)).Get("/auth/callback", s.handleAuthCallback)
 	r.Post("/auth/logout", s.handleLogout)
 
-	r.With(rateLimitMiddleware(s.dataLimiter)).Post("/metrics/refresh", s.handleRefreshMetrics)
-	r.Get("/metrics/latest", s.handleLatestMetrics)
-	r.Get("/metrics/history", s.handleHistory)
-
-	r.With(rateLimitMiddleware(s.aiLimiter)).Get("/recommendations/insights", s.handleRecommendations)
+	r.Get("/dashboard", s.handleDashboard)
+	r.With(rateLimitMiddleware(s.dataLimiter)).Post("/dashboard/refresh", s.handleRefreshDashboard)
 
 	return r
 }
@@ -213,7 +205,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	_, _ = s.metrics.RefreshSnapshot(ctx, profile.ID)
+	_, _ = s.dashboards.Refresh(ctx, profile.ID)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     oauthStateCookieName,
@@ -234,90 +226,36 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s *Server) handleRefreshMetrics(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRefreshDashboard(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireActiveUser(w, r)
 	if !ok {
 		return
 	}
 
-	snapshot, err := s.metrics.RefreshSnapshot(r.Context(), userID)
+	dashboard, err := s.dashboards.Refresh(r.Context(), userID)
 	if err != nil {
-		writeUpstreamError(w, r, "failed to refresh metrics", err)
+		writeUpstreamError(w, r, "failed to refresh dashboard", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, snapshot)
+	writeJSON(w, http.StatusOK, dashboard)
 }
 
-func (s *Server) handleLatestMetrics(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireActiveUser(w, r)
 	if !ok {
 		return
 	}
 
-	snapshot, err := s.metrics.GetLatestSnapshot(r.Context(), userID)
+	dashboard, err := s.dashboards.Get(r.Context(), userID)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "no snapshots found, run a refresh first")
+			writeError(w, http.StatusNotFound, "no dashboard yet, run a refresh first")
 			return
 		}
-		writeInternalError(w, r, "failed to load latest snapshot", err)
+		writeUpstreamError(w, r, "failed to load dashboard", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, snapshot)
-}
-
-func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireActiveUser(w, r)
-	if !ok {
-		return
-	}
-
-	days := 90
-	if v := r.URL.Query().Get("days"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 366 {
-			days = parsed
-		}
-	}
-
-	points, err := s.metrics.GetHistory(r.Context(), userID, days)
-	if err != nil {
-		writeInternalError(w, r, "failed to load history", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"days":   days,
-		"points": points,
-	})
-}
-
-func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
-	userID, ok := s.requireActiveUser(w, r)
-	if !ok {
-		return
-	}
-
-	snapshot, err := s.metrics.GetLatestSnapshot(r.Context(), userID)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "no snapshots found, run a refresh first")
-			return
-		}
-		writeInternalError(w, r, "failed to load latest snapshot", err)
-		return
-	}
-
-	history, err := s.metrics.GetHistory(r.Context(), userID, 180)
-	if err != nil {
-		writeInternalError(w, r, "failed to load history for recommendations", err)
-		return
-	}
-
-	insights, err := s.recommenders.GenerateInsights(r.Context(), snapshot, history)
-	if err != nil {
-		writeInternalError(w, r, "failed to generate recommendations", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, insights)
+	writeJSON(w, http.StatusOK, dashboard)
 }
 
 func (s *Server) requireActiveUser(w http.ResponseWriter, r *http.Request) (string, bool) {

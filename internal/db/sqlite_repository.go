@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"rhythmiq/internal/models"
 
@@ -64,21 +63,14 @@ func (r *sqliteRepository) ensureSchema(ctx context.Context) error {
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY(user_id) REFERENCES users(id)
 		);`,
-		`CREATE TABLE IF NOT EXISTS metric_snapshots (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id TEXT NOT NULL,
+		`CREATE TABLE IF NOT EXISTS dashboards (
+			user_id TEXT PRIMARY KEY,
 			captured_at DATETIME NOT NULL,
-			top_tracks_json TEXT NOT NULL,
-			top_artists_json TEXT NOT NULL,
-			recently_played_json TEXT NOT NULL,
-			saved_track_count INTEGER NOT NULL,
-			playlist_count INTEGER NOT NULL,
-			following_count INTEGER NOT NULL,
-			stats_json TEXT NOT NULL,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			payload TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY(user_id) REFERENCES users(id)
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_metric_snapshots_user_time ON metric_snapshots(user_id, captured_at DESC);`,
+		`DROP TABLE IF EXISTS metric_snapshots;`,
 	}
 
 	for _, stmt := range schema {
@@ -214,102 +206,35 @@ func (r *sqliteRepository) ListUserIDs(ctx context.Context) ([]string, error) {
 	return userIDs, nil
 }
 
-func (r *sqliteRepository) SaveSnapshot(ctx context.Context, snapshot models.MetricSnapshot) (int64, error) {
-	payload, err := marshalSnapshot(snapshot)
+func (r *sqliteRepository) SaveDashboard(ctx context.Context, dashboard models.Dashboard) error {
+	payload, err := marshalDashboard(dashboard)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	result, err := r.db.ExecContext(
+	_, err = r.db.ExecContext(
 		ctx,
-		`INSERT INTO metric_snapshots (
-			user_id, captured_at, top_tracks_json, top_artists_json, recently_played_json,
-			saved_track_count, playlist_count, following_count, stats_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		snapshot.UserID,
-		snapshot.CapturedAt.UTC(),
-		string(payload.TopTracksJSON),
-		string(payload.TopArtistsJSON),
-		string(payload.RecentlyPlayedJSON),
-		snapshot.SavedTrackCount,
-		snapshot.PlaylistCount,
-		snapshot.FollowingCount,
-		string(payload.StatsJSON),
+		`INSERT INTO dashboards (user_id, captured_at, payload, updated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(user_id) DO UPDATE SET
+			captured_at=excluded.captured_at,
+			payload=excluded.payload,
+			updated_at=CURRENT_TIMESTAMP`,
+		dashboard.UserID,
+		dashboard.CapturedAt.UTC(),
+		string(payload),
 	)
 	if err != nil {
-		return 0, fmt.Errorf("insert snapshot: %w", err)
+		return fmt.Errorf("save dashboard: %w", err)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("snapshot last insert id: %w", err)
-	}
-	return id, nil
+	return nil
 }
 
-func (r *sqliteRepository) GetLatestSnapshot(ctx context.Context, userID string) (models.MetricSnapshot, error) {
+func (r *sqliteRepository) GetDashboard(ctx context.Context, userID string) (models.Dashboard, error) {
 	row := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, user_id, captured_at, top_tracks_json, top_artists_json, recently_played_json,
-			saved_track_count, playlist_count, following_count, stats_json
-		 FROM metric_snapshots WHERE user_id = ? ORDER BY captured_at DESC LIMIT 1`,
+		`SELECT payload FROM dashboards WHERE user_id = ?`,
 		userID,
 	)
-	return scanSnapshot(row)
-}
-
-func (r *sqliteRepository) GetSnapshotsSince(ctx context.Context, userID string, since time.Time) ([]models.MetricSnapshot, error) {
-	rows, err := r.db.QueryContext(
-		ctx,
-		`SELECT id, user_id, captured_at, top_tracks_json, top_artists_json, recently_played_json,
-			saved_track_count, playlist_count, following_count, stats_json
-		 FROM metric_snapshots WHERE user_id = ? AND captured_at >= ? ORDER BY captured_at ASC`,
-		userID,
-		since.UTC(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query snapshots since: %w", err)
-	}
-	defer rows.Close()
-
-	var snapshots []models.MetricSnapshot
-	for rows.Next() {
-		snapshot, err := scanSnapshot(rows)
-		if err != nil {
-			return nil, err
-		}
-		snapshots = append(snapshots, snapshot)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate snapshots since: %w", err)
-	}
-	return snapshots, nil
-}
-
-func (r *sqliteRepository) GetRecentSnapshots(ctx context.Context, userID string, limit int) ([]models.MetricSnapshot, error) {
-	rows, err := r.db.QueryContext(
-		ctx,
-		`SELECT id, user_id, captured_at, top_tracks_json, top_artists_json, recently_played_json,
-			saved_track_count, playlist_count, following_count, stats_json
-		 FROM metric_snapshots WHERE user_id = ? ORDER BY captured_at DESC LIMIT ?`,
-		userID,
-		limit,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query recent snapshots: %w", err)
-	}
-	defer rows.Close()
-
-	var snapshots []models.MetricSnapshot
-	for rows.Next() {
-		snapshot, err := scanSnapshot(rows)
-		if err != nil {
-			return nil, err
-		}
-		snapshots = append(snapshots, snapshot)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate recent snapshots: %w", err)
-	}
-	return snapshots, nil
+	return scanDashboard(row)
 }

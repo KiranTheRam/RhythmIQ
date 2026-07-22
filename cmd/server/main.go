@@ -32,11 +32,10 @@ func main() {
 	defer repo.Close()
 
 	spotifyClient := spotify.NewClient(cfg)
-	metrics := service.NewMetricsService(repo, spotifyClient)
-	recommender := service.NewRecommendationService(cfg)
+	dashboards := service.NewDashboardService(repo, spotifyClient)
 
-	apiServer := api.NewServer(cfg, repo, spotifyClient, metrics, recommender)
-	go startAutoSnapshotCollector(repo, metrics)
+	apiServer := api.NewServer(cfg, repo, spotifyClient, dashboards)
+	go startDashboardRefresher(repo, dashboards)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiServer.Routes()))
@@ -226,7 +225,9 @@ func validateSecurityConfig(cfg config.Config) error {
 	return nil
 }
 
-func startAutoSnapshotCollector(repo db.Repository, metrics *service.MetricsService) {
+// startDashboardRefresher keeps each user's cached dashboard reasonably fresh
+// so page loads never wait on the Spotify API.
+func startDashboardRefresher(repo db.Repository, dashboards *service.DashboardService) {
 	const syncInterval = 6 * time.Hour
 	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
@@ -237,13 +238,13 @@ func startAutoSnapshotCollector(repo db.Repository, metrics *service.MetricsServ
 
 		userIDs, err := repo.ListUserIDs(ctx)
 		if err != nil {
-			log.Printf("auto snapshot user list failed: %v", err)
+			log.Printf("dashboard refresh user list failed: %v", err)
 			return
 		}
 
 		for _, userID := range userIDs {
-			if _, err := metrics.RefreshSnapshot(ctx, userID); err != nil {
-				log.Printf("auto snapshot refresh failed for user %s: %v", userID, err)
+			if _, err := dashboards.Refresh(ctx, userID); err != nil {
+				log.Printf("dashboard refresh failed for user %s: %v", userID, err)
 			}
 		}
 	}

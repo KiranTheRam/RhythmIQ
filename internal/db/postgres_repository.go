@@ -73,20 +73,13 @@ func (r *postgresRepository) ensureSchema(ctx context.Context) error {
 			expires_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);`,
-		`CREATE TABLE IF NOT EXISTS metric_snapshots (
-			id BIGSERIAL PRIMARY KEY,
-			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		`CREATE TABLE IF NOT EXISTS dashboards (
+			user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 			captured_at TIMESTAMPTZ NOT NULL,
-			top_tracks_json JSONB NOT NULL,
-			top_artists_json JSONB NOT NULL,
-			recently_played_json JSONB NOT NULL,
-			saved_track_count INTEGER NOT NULL,
-			playlist_count INTEGER NOT NULL,
-			following_count INTEGER NOT NULL,
-			stats_json JSONB NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			payload JSONB NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_metric_snapshots_user_time ON metric_snapshots(user_id, captured_at DESC);`,
+		`DROP TABLE IF EXISTS metric_snapshots;`,
 	}
 
 	for _, stmt := range schema {
@@ -222,103 +215,35 @@ func (r *postgresRepository) ListUserIDs(ctx context.Context) ([]string, error) 
 	return userIDs, nil
 }
 
-func (r *postgresRepository) SaveSnapshot(ctx context.Context, snapshot models.MetricSnapshot) (int64, error) {
-	payload, err := marshalSnapshot(snapshot)
+func (r *postgresRepository) SaveDashboard(ctx context.Context, dashboard models.Dashboard) error {
+	payload, err := marshalDashboard(dashboard)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	var id int64
-	err = r.db.QueryRowContext(
+	_, err = r.db.ExecContext(
 		ctx,
-		`INSERT INTO metric_snapshots (
-			user_id, captured_at, top_tracks_json, top_artists_json, recently_played_json,
-			saved_track_count, playlist_count, following_count, stats_json
-		) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9::jsonb)
-		RETURNING id`,
-		snapshot.UserID,
-		snapshot.CapturedAt.UTC(),
-		string(payload.TopTracksJSON),
-		string(payload.TopArtistsJSON),
-		string(payload.RecentlyPlayedJSON),
-		snapshot.SavedTrackCount,
-		snapshot.PlaylistCount,
-		snapshot.FollowingCount,
-		string(payload.StatsJSON),
-	).Scan(&id)
+		`INSERT INTO dashboards (user_id, captured_at, payload, updated_at)
+		 VALUES ($1, $2, $3::jsonb, NOW())
+		 ON CONFLICT(user_id) DO UPDATE SET
+			captured_at=EXCLUDED.captured_at,
+			payload=EXCLUDED.payload,
+			updated_at=NOW()`,
+		dashboard.UserID,
+		dashboard.CapturedAt.UTC(),
+		string(payload),
+	)
 	if err != nil {
-		return 0, fmt.Errorf("insert snapshot: %w", err)
+		return fmt.Errorf("save dashboard: %w", err)
 	}
-
-	return id, nil
+	return nil
 }
 
-func (r *postgresRepository) GetLatestSnapshot(ctx context.Context, userID string) (models.MetricSnapshot, error) {
+func (r *postgresRepository) GetDashboard(ctx context.Context, userID string) (models.Dashboard, error) {
 	row := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, user_id, captured_at,
-			top_tracks_json::text, top_artists_json::text, recently_played_json::text,
-			saved_track_count, playlist_count, following_count, stats_json::text
-		 FROM metric_snapshots WHERE user_id = $1 ORDER BY captured_at DESC LIMIT 1`,
+		`SELECT payload::text FROM dashboards WHERE user_id = $1`,
 		userID,
 	)
-	return scanSnapshot(row)
-}
-
-func (r *postgresRepository) GetSnapshotsSince(ctx context.Context, userID string, since time.Time) ([]models.MetricSnapshot, error) {
-	rows, err := r.db.QueryContext(
-		ctx,
-		`SELECT id, user_id, captured_at,
-			top_tracks_json::text, top_artists_json::text, recently_played_json::text,
-			saved_track_count, playlist_count, following_count, stats_json::text
-		 FROM metric_snapshots WHERE user_id = $1 AND captured_at >= $2 ORDER BY captured_at ASC`,
-		userID,
-		since.UTC(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query snapshots since: %w", err)
-	}
-	defer rows.Close()
-
-	var snapshots []models.MetricSnapshot
-	for rows.Next() {
-		snapshot, err := scanSnapshot(rows)
-		if err != nil {
-			return nil, err
-		}
-		snapshots = append(snapshots, snapshot)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate snapshots since: %w", err)
-	}
-	return snapshots, nil
-}
-
-func (r *postgresRepository) GetRecentSnapshots(ctx context.Context, userID string, limit int) ([]models.MetricSnapshot, error) {
-	rows, err := r.db.QueryContext(
-		ctx,
-		`SELECT id, user_id, captured_at,
-			top_tracks_json::text, top_artists_json::text, recently_played_json::text,
-			saved_track_count, playlist_count, following_count, stats_json::text
-		 FROM metric_snapshots WHERE user_id = $1 ORDER BY captured_at DESC LIMIT $2`,
-		userID,
-		limit,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query recent snapshots: %w", err)
-	}
-	defer rows.Close()
-
-	var snapshots []models.MetricSnapshot
-	for rows.Next() {
-		snapshot, err := scanSnapshot(rows)
-		if err != nil {
-			return nil, err
-		}
-		snapshots = append(snapshots, snapshot)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate recent snapshots: %w", err)
-	}
-	return snapshots, nil
+	return scanDashboard(row)
 }

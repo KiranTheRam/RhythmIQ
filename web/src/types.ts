@@ -1,5 +1,3 @@
-export type TimeRange = 'short_term' | 'medium_term' | 'long_term'
-
 export interface UserProfile {
   id: string
   displayName: string
@@ -14,133 +12,93 @@ export interface AuthStatus {
   profile?: UserProfile
 }
 
-export interface TrackSummary {
+export interface ArtistStat {
+  rank: number
+  id: string
+  name: string
+  genres: string[]
+  imageUrl: string
+  plays: number
+  popularity: number
+  externalUrl: string
+}
+
+export interface TrackStat {
+  rank: number
   id: string
   name: string
   artists: string[]
   album: string
+  albumImageUrl: string
   durationMs: number
-  popularity: number
+  plays: number
   externalUrl: string
 }
 
-export interface ArtistSummary {
-  id: string
-  name: string
-  genres: string[]
-  popularity: number
-  followers: number
-  externalUrl: string
-}
-
-export interface GenreWeight {
+export interface GenreStat {
   genre: string
-  weight: number
+  share: number
 }
 
-export interface SnapshotStats {
-  estimatedDailyMinutes: number
-  estimatedYearMinutes: number
-  uniqueArtistCount: number
-  uniqueGenreCount: number
-  consistencyScore: number
-  discoveryScore: number
-  replayScore: number
-  varietyScore: number
-  sessionCount: number
-  averageSessionMinutes: number
-  averageTrackMinutes: number
-  weekendListeningShare: number
-  nightOwlScore: number
-  peakListeningHour: number
-  topTrackConcentration: number
-  listeningByDaypart: Record<string, number>
-  listeningByWeekday: Record<string, number>
-  topGenres: GenreWeight[]
-  topArtistMinutesYtd: ArtistMinuteStat[]
-  topArtistMinutesAllTime: ArtistMinuteStat[]
-  moodVector: Record<string, number>
-}
-
-export interface ArtistMinuteStat {
+export interface AlbumStat {
   name: string
-  minutes: number
-  externalUrl: string
-}
-
-export interface PlaybackEvent {
-  playedAt: string
-  track: TrackSummary
-}
-
-export interface MetricSnapshot {
-  id: number
-  userId: string
-  capturedAt: string
-  topTracks: Record<TimeRange, TrackSummary[]>
-  topArtists: Record<TimeRange, ArtistSummary[]>
-  recentlyPlayed: PlaybackEvent[]
-  savedTrackCount: number
-  playlistCount: number
-  followingCount: number
-  stats: SnapshotStats
-}
-
-export interface SnapshotPoint {
-  capturedAt: string
-  estimatedDailyMinutes: number
-  uniqueArtistCount: number
-  uniqueGenreCount: number
-  consistencyScore: number
-  discoveryScore: number
-  replayScore: number
-  varietyScore: number
-  sessionCount: number
-  averageSessionMinutes: number
-  weekendListeningShare: number
-  nightOwlScore: number
-  topTrackConcentration: number
-}
-
-export interface HistoryResponse {
-  days: number
-  points: SnapshotPoint[]
-}
-
-export interface Recommendation {
-  title: string
-  description: string
-  confidence: string
-  type: string
-}
-
-export interface GenreRecommendation {
-  genre: string
-  reason: string
-  confidence: string
-}
-
-export interface ArtistRecommendation {
-  name: string
-  reason: string
-  externalUrl: string
-  confidence: string
-}
-
-export interface SongRecommendation {
-  track: string
   artist: string
-  reason: string
+  imageUrl: string
+  releaseYear: number
+  trackCount: number
+  trackTotal: number
   externalUrl: string
-  confidence: string
 }
 
-export interface InsightResponse {
-  generatedAt: string
-  narrative: string
-  recommendations: Recommendation[]
-  genreRecommendations: GenreRecommendation[]
-  artistRecommendations: ArtistRecommendation[]
-  songRecommendations: SongRecommendation[]
-  openAIGenerated: boolean
+export interface DecadeStat {
+  decade: number
+  count: number
+}
+
+export interface ListeningRun {
+  minutes: number
+  tracks: number
+  startedAt: string
+}
+
+export type PeriodKey = 'week' | 'month' | 'year'
+
+export interface PeriodMetrics {
+  key: PeriodKey
+  label: string
+  source: string
+  artists: ArtistStat[]
+  tracks: TrackStat[]
+  genres: GenreStat[]
+  newArtists: ArtistStat[]
+  topAlbum: AlbumStat | null
+  decades: DecadeStat[]
+  deepCut: ArtistStat | null
+  distinctArtists: number
+  distinctAlbums: number
+  totalPlays: number
+  totalMinutes: number
+  hasTotals: boolean
+}
+
+export interface ReplayStat {
+  track: TrackStat
+  plays: number
+}
+
+export interface LibraryStats {
+  savedTracks: number
+  playlists: number
+  following: number
+}
+
+export interface Dashboard {
+  userId: string
+  profile: UserProfile
+  capturedAt: string
+  periods: PeriodMetrics[]
+  mostReplayed: ReplayStat | null
+  longestRun: ListeningRun | null
+  library: LibraryStats
+  playedAt: string[]
 }

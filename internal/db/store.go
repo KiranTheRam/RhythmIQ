@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"rhythmiq/internal/models"
 )
@@ -21,10 +20,8 @@ type Repository interface {
 	SaveToken(ctx context.Context, userID string, token models.SpotifyToken) error
 	GetToken(ctx context.Context, userID string) (models.SpotifyToken, error)
 	ListUserIDs(ctx context.Context) ([]string, error)
-	SaveSnapshot(ctx context.Context, snapshot models.MetricSnapshot) (int64, error)
-	GetLatestSnapshot(ctx context.Context, userID string) (models.MetricSnapshot, error)
-	GetSnapshotsSince(ctx context.Context, userID string, since time.Time) ([]models.MetricSnapshot, error)
-	GetRecentSnapshots(ctx context.Context, userID string, limit int) ([]models.MetricSnapshot, error)
+	SaveDashboard(ctx context.Context, dashboard models.Dashboard) error
+	GetDashboard(ctx context.Context, userID string) (models.Dashboard, error)
 }
 
 // New creates a repository implementation based on driver configuration.

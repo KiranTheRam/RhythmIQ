@@ -8,6 +8,7 @@ rhythmiq.db
 
 # Env
 .env
+creds.txt
 .env.*
 !.env.example
 

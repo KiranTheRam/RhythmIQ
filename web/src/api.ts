@@ -1,9 +1,4 @@
-import type {
-  AuthStatus,
-  HistoryResponse,
-  InsightResponse,
-  MetricSnapshot
-} from './types'
+import type { AuthStatus, Dashboard } from './types'
 
 const headers = {
   'Content-Type': 'application/json'
@@ -27,7 +22,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         message = payload.error
       }
     } catch {
-      // ignore parse errors
+      // Response had no JSON body; keep the status-based message.
     }
     throw new Error(message)
   }
@@ -39,26 +34,39 @@ export function getAuthStatus() {
   return request<AuthStatus>('/api/auth/status')
 }
 
-export function refreshMetrics() {
-  return request<MetricSnapshot>('/api/metrics/refresh', {
-    method: 'POST',
-    body: JSON.stringify({})
-  })
+export async function getDashboard() {
+  return normalize(await request<Dashboard>('/api/dashboard'))
 }
 
-export function getLatestMetrics() {
-  return request<MetricSnapshot>('/api/metrics/latest')
+export async function refreshDashboard() {
+  return normalize(
+    await request<Dashboard>('/api/dashboard/refresh', {
+      method: 'POST',
+      body: JSON.stringify({})
+    })
+  )
 }
 
-export function getMetricHistory(days = 180) {
-  return request<HistoryResponse>(`/api/metrics/history?days=${days}`)
+/**
+ * Guarantees every list on the payload is an array. A missing list would
+ * otherwise throw on `.length` during render and blank the whole page.
+ */
+function normalize(dashboard: Dashboard): Dashboard {
+  return {
+    ...dashboard,
+    playedAt: dashboard.playedAt ?? [],
+    periods: (dashboard.periods ?? []).map((period) => ({
+      ...period,
+      artists: period.artists ?? [],
+      tracks: period.tracks ?? [],
+      genres: period.genres ?? [],
+      newArtists: period.newArtists ?? [],
+      decades: period.decades ?? []
+    }))
+  }
 }
 
-export function getInsights() {
-  return request<InsightResponse>('/api/recommendations/insights')
-}
-
-export async function logout() {
+export function logout() {
   return request<{ ok: boolean }>('/api/auth/logout', {
     method: 'POST',
     body: JSON.stringify({})

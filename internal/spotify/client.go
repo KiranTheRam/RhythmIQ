@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ const (
 	apiBaseURL      = "https://api.spotify.com/v1"
 )
 
-// OAuthScopes include everything needed for wrapped-like dashboard metrics.
+// OAuthScopes include everything needed for the listening dashboard.
 var OAuthScopes = []string{
 	"user-read-private",
 	"user-top-read",
@@ -163,23 +164,117 @@ func (c *Client) GetCurrentUser(ctx context.Context, accessToken string) (models
 	}, nil
 }
 
+// trackObject mirrors the shape of a Spotify track across endpoints.
+type trackObject struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Popularity int    `json:"popularity"`
+	DurationMS int    `json:"duration_ms"`
+	Album      struct {
+		ID           string            `json:"id"`
+		Name         string            `json:"name"`
+		ReleaseDate  string            `json:"release_date"`
+		Images       []imageObject     `json:"images"`
+		ExternalURLs map[string]string `json:"external_urls"`
+	} `json:"album"`
+	Artists []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"artists"`
+	ExternalURLs map[string]string `json:"external_urls"`
+}
+
+type imageObject struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+func (t trackObject) toModel() models.TrackSummary {
+	names := make([]string, 0, len(t.Artists))
+	ids := make([]string, 0, len(t.Artists))
+	for _, artist := range t.Artists {
+		names = append(names, artist.Name)
+		if artist.ID != "" {
+			ids = append(ids, artist.ID)
+		}
+	}
+	return models.TrackSummary{
+		ID:            t.ID,
+		Name:          t.Name,
+		Artists:       names,
+		ArtistIDs:     ids,
+		Album:         t.Album.Name,
+		AlbumID:       t.Album.ID,
+		AlbumImageURL: pickImage(t.Album.Images),
+		AlbumURL:      safeSpotifyExternalURL(t.Album.ExternalURLs["spotify"]),
+		ReleaseYear:   parseReleaseYear(t.Album.ReleaseDate),
+		DurationMS:    t.DurationMS,
+		Popularity:    t.Popularity,
+		ExternalURL:   safeSpotifyExternalURL(t.ExternalURLs["spotify"]),
+	}
+}
+
+// parseReleaseYear reads the leading year from Spotify's release_date, which
+// may be "2016", "2016-08", or "2016-08-20" depending on known precision.
+func parseReleaseYear(raw string) int {
+	if len(raw) < 4 {
+		return 0
+	}
+	year, err := strconv.Atoi(raw[:4])
+	if err != nil || year < 1900 || year > 2200 {
+		return 0
+	}
+	return year
+}
+
+// artistObject mirrors the shape of a Spotify artist across endpoints.
+type artistObject struct {
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Genres    []string      `json:"genres"`
+	Images    []imageObject `json:"images"`
+	Followers struct {
+		Total int `json:"total"`
+	} `json:"followers"`
+	Popularity   int               `json:"popularity"`
+	ExternalURLs map[string]string `json:"external_urls"`
+}
+
+func (a artistObject) toModel() models.ArtistSummary {
+	return models.ArtistSummary{
+		ID:          a.ID,
+		Name:        a.Name,
+		Genres:      a.Genres,
+		ImageURL:    pickImage(a.Images),
+		Popularity:  a.Popularity,
+		Followers:   a.Followers.Total,
+		ExternalURL: safeSpotifyExternalURL(a.ExternalURLs["spotify"]),
+	}
+}
+
+// pickImage returns the largest available image URL, which the editorial
+// layout renders full-bleed.
+func pickImage(images []imageObject) string {
+	best := ""
+	bestWidth := -1
+	for _, image := range images {
+		if image.URL == "" {
+			continue
+		}
+		if image.Width > bestWidth {
+			bestWidth = image.Width
+			best = image.URL
+		}
+	}
+	return best
+}
+
 // GetTopTracks fetches top tracks for a time range.
 func (c *Client) GetTopTracks(ctx context.Context, accessToken, timeRange string, limit int) ([]models.TrackSummary, error) {
 	endpoint := fmt.Sprintf("%s/me/top/tracks?time_range=%s&limit=%d", apiBaseURL, url.QueryEscape(timeRange), limit)
 	var payload struct {
-		Items []struct {
-			ID         string `json:"id"`
-			Name       string `json:"name"`
-			Popularity int    `json:"popularity"`
-			DurationMS int    `json:"duration_ms"`
-			Album      struct {
-				Name string `json:"name"`
-			} `json:"album"`
-			Artists []struct {
-				Name string `json:"name"`
-			} `json:"artists"`
-			ExternalURLs map[string]string `json:"external_urls"`
-		} `json:"items"`
+		Items []trackObject `json:"items"`
 	}
 	if err := c.getJSON(ctx, accessToken, endpoint, &payload); err != nil {
 		return nil, err
@@ -187,21 +282,8 @@ func (c *Client) GetTopTracks(ctx context.Context, accessToken, timeRange string
 
 	tracks := make([]models.TrackSummary, 0, len(payload.Items))
 	for _, item := range payload.Items {
-		artistNames := make([]string, 0, len(item.Artists))
-		for _, artist := range item.Artists {
-			artistNames = append(artistNames, artist.Name)
-		}
-		tracks = append(tracks, models.TrackSummary{
-			ID:          item.ID,
-			Name:        item.Name,
-			Artists:     artistNames,
-			Album:       item.Album.Name,
-			DurationMS:  item.DurationMS,
-			Popularity:  item.Popularity,
-			ExternalURL: safeSpotifyExternalURL(item.ExternalURLs["spotify"]),
-		})
+		tracks = append(tracks, item.toModel())
 	}
-
 	return tracks, nil
 }
 
@@ -209,16 +291,7 @@ func (c *Client) GetTopTracks(ctx context.Context, accessToken, timeRange string
 func (c *Client) GetTopArtists(ctx context.Context, accessToken, timeRange string, limit int) ([]models.ArtistSummary, error) {
 	endpoint := fmt.Sprintf("%s/me/top/artists?time_range=%s&limit=%d", apiBaseURL, url.QueryEscape(timeRange), limit)
 	var payload struct {
-		Items []struct {
-			ID         string   `json:"id"`
-			Name       string   `json:"name"`
-			Genres     []string `json:"genres"`
-			Popularity int      `json:"popularity"`
-			Followers  struct {
-				Total int `json:"total"`
-			} `json:"followers"`
-			ExternalURLs map[string]string `json:"external_urls"`
-		} `json:"items"`
+		Items []artistObject `json:"items"`
 	}
 	if err := c.getJSON(ctx, accessToken, endpoint, &payload); err != nil {
 		return nil, err
@@ -226,14 +299,52 @@ func (c *Client) GetTopArtists(ctx context.Context, accessToken, timeRange strin
 
 	artists := make([]models.ArtistSummary, 0, len(payload.Items))
 	for _, item := range payload.Items {
-		artists = append(artists, models.ArtistSummary{
-			ID:          item.ID,
-			Name:        item.Name,
-			Genres:      item.Genres,
-			Popularity:  item.Popularity,
-			Followers:   item.Followers.Total,
-			ExternalURL: safeSpotifyExternalURL(item.ExternalURLs["spotify"]),
-		})
+		artists = append(artists, item.toModel())
+	}
+	return artists, nil
+}
+
+// GetArtistsByID hydrates artists (genres + images) for IDs harvested from
+// playback events, which only carry artist names and IDs.
+func (c *Client) GetArtistsByID(ctx context.Context, accessToken string, ids []string) ([]models.ArtistSummary, error) {
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return nil, nil
+	}
+
+	const batchSize = 50
+	artists := make([]models.ArtistSummary, 0, len(unique))
+	for start := 0; start < len(unique); start += batchSize {
+		end := start + batchSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+
+		endpoint := fmt.Sprintf("%s/artists?ids=%s", apiBaseURL, url.QueryEscape(strings.Join(unique[start:end], ",")))
+		var payload struct {
+			Artists []artistObject `json:"artists"`
+		}
+		if err := c.getJSON(ctx, accessToken, endpoint, &payload); err != nil {
+			return nil, err
+		}
+		for _, item := range payload.Artists {
+			if item.ID == "" {
+				continue
+			}
+			artists = append(artists, item.toModel())
+		}
 	}
 	return artists, nil
 }
@@ -243,20 +354,8 @@ func (c *Client) GetRecentlyPlayed(ctx context.Context, accessToken string, limi
 	endpoint := fmt.Sprintf("%s/me/player/recently-played?limit=%d", apiBaseURL, limit)
 	var payload struct {
 		Items []struct {
-			PlayedAt string `json:"played_at"`
-			Track    struct {
-				ID         string `json:"id"`
-				Name       string `json:"name"`
-				DurationMS int    `json:"duration_ms"`
-				Popularity int    `json:"popularity"`
-				Album      struct {
-					Name string `json:"name"`
-				} `json:"album"`
-				Artists []struct {
-					Name string `json:"name"`
-				} `json:"artists"`
-				ExternalURLs map[string]string `json:"external_urls"`
-			} `json:"track"`
+			PlayedAt string      `json:"played_at"`
+			Track    trackObject `json:"track"`
 		} `json:"items"`
 	}
 	if err := c.getJSON(ctx, accessToken, endpoint, &payload); err != nil {
@@ -269,21 +368,9 @@ func (c *Client) GetRecentlyPlayed(ctx context.Context, accessToken string, limi
 		if err != nil {
 			continue
 		}
-		artistNames := make([]string, 0, len(item.Track.Artists))
-		for _, artist := range item.Track.Artists {
-			artistNames = append(artistNames, artist.Name)
-		}
 		result = append(result, models.PlaybackEvent{
 			PlayedAt: playedAt,
-			Track: models.TrackSummary{
-				ID:          item.Track.ID,
-				Name:        item.Track.Name,
-				Artists:     artistNames,
-				Album:       item.Track.Album.Name,
-				DurationMS:  item.Track.DurationMS,
-				Popularity:  item.Track.Popularity,
-				ExternalURL: safeSpotifyExternalURL(item.Track.ExternalURLs["spotify"]),
-			},
+			Track:    item.Track.toModel(),
 		})
 	}
 

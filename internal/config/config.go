@@ -20,8 +20,6 @@ type Config struct {
 	SessionSecret       string
 	AllowedOrigins      []string
 	ForceSecureCookies  bool
-	OpenAIAPIKey        string
-	OpenAIModel         string
 }
 
 // Load reads environment variables and applies sensible defaults.
@@ -41,8 +39,6 @@ func Load() Config {
 		SessionSecret:       getEnv("RHYTHMIQ_SESSION_SECRET", "rhythmiq-dev-session-secret-change-me"),
 		AllowedOrigins:      resolveAllowedOrigins(baseURL, os.Getenv("RHYTHMIQ_ALLOWED_ORIGINS")),
 		ForceSecureCookies:  forceSecureCookies,
-		OpenAIAPIKey:        os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:         getEnv("OPENAI_MODEL", "gpt-4.1-mini"),
 	}
 }
 

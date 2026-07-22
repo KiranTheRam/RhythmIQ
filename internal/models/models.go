@@ -20,141 +20,151 @@ type UserProfile struct {
 	AvatarURL   string `json:"avatarUrl"`
 }
 
-// TrackSummary is a compact representation used across snapshots.
+// TrackSummary is a compact representation of a Spotify track.
 type TrackSummary struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Artists     []string `json:"artists"`
-	Album       string   `json:"album"`
-	DurationMS  int      `json:"durationMs"`
-	Popularity  int      `json:"popularity"`
-	ExternalURL string   `json:"externalUrl"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Artists       []string `json:"artists"`
+	ArtistIDs     []string `json:"artistIds"`
+	Album         string   `json:"album"`
+	AlbumID       string   `json:"albumId"`
+	AlbumImageURL string   `json:"albumImageUrl"`
+	AlbumURL      string   `json:"albumUrl"`
+	ReleaseYear   int      `json:"releaseYear"`
+	DurationMS    int      `json:"durationMs"`
+	Popularity    int      `json:"popularity"`
+	ExternalURL   string   `json:"externalUrl"`
 }
 
-// ArtistSummary is a compact representation used across snapshots.
+// ArtistSummary is a compact representation of a Spotify artist.
 type ArtistSummary struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Genres      []string `json:"genres"`
+	ImageURL    string   `json:"imageUrl"`
 	Popularity  int      `json:"popularity"`
 	Followers   int      `json:"followers"`
 	ExternalURL string   `json:"externalUrl"`
 }
 
-// PlaybackEvent captures a recently played item.
+// PlaybackEvent captures a single recently played item.
 type PlaybackEvent struct {
 	PlayedAt time.Time    `json:"playedAt"`
 	Track    TrackSummary `json:"track"`
 }
 
-// SnapshotStats are computed metrics for fast dashboard rendering.
-type SnapshotStats struct {
-	EstimatedDailyMinutes int                `json:"estimatedDailyMinutes"`
-	EstimatedYearMinutes  int                `json:"estimatedYearMinutes"`
-	UniqueArtistCount     int                `json:"uniqueArtistCount"`
-	UniqueGenreCount      int                `json:"uniqueGenreCount"`
-	ConsistencyScore      float64            `json:"consistencyScore"`
-	DiscoveryScore        float64            `json:"discoveryScore"`
-	ReplayScore           float64            `json:"replayScore"`
-	VarietyScore          float64            `json:"varietyScore"`
-	SessionCount          int                `json:"sessionCount"`
-	AverageSessionMinutes float64            `json:"averageSessionMinutes"`
-	AverageTrackMinutes   float64            `json:"averageTrackMinutes"`
-	WeekendListeningShare float64            `json:"weekendListeningShare"`
-	NightOwlScore         float64            `json:"nightOwlScore"`
-	PeakListeningHour     int                `json:"peakListeningHour"`
-	TopTrackConcentration float64            `json:"topTrackConcentration"`
-	ListeningByDaypart    map[string]float64 `json:"listeningByDaypart"`
-	ListeningByWeekday    map[string]float64 `json:"listeningByWeekday"`
-	TopGenres             []GenreWeight      `json:"topGenres"`
-	TopArtistMinutesYTD   []ArtistMinuteStat `json:"topArtistMinutesYtd"`
-	TopArtistMinutesAll   []ArtistMinuteStat `json:"topArtistMinutesAllTime"`
-	MoodVector            map[string]float64 `json:"moodVector"`
+// ArtistStat is a ranked artist entry within a period.
+type ArtistStat struct {
+	Rank        int      `json:"rank"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Genres      []string `json:"genres"`
+	ImageURL    string   `json:"imageUrl"`
+	Plays       int      `json:"plays"`
+	Popularity  int      `json:"popularity"`
+	ExternalURL string   `json:"externalUrl"`
 }
 
-// ArtistMinuteStat captures estimated listening minutes for an artist over a period.
-type ArtistMinuteStat struct {
+// TrackStat is a ranked track entry within a period.
+type TrackStat struct {
+	Rank          int      `json:"rank"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Artists       []string `json:"artists"`
+	Album         string   `json:"album"`
+	AlbumImageURL string   `json:"albumImageUrl"`
+	DurationMS    int      `json:"durationMs"`
+	Plays         int      `json:"plays"`
+	ExternalURL   string   `json:"externalUrl"`
+}
+
+// GenreStat is a genre and its share of a period's listening.
+type GenreStat struct {
+	Genre string  `json:"genre"`
+	Share float64 `json:"share"`
+}
+
+// AlbumStat is the album that the most of your top tracks come from.
+// TrackCount is a plain count of those tracks, out of TrackTotal considered.
+type AlbumStat struct {
 	Name        string `json:"name"`
-	Minutes     int    `json:"minutes"`
-	ExternalURL string `json:"externalUrl"`
-}
-
-// GenreWeight ranks a genre by computed weight.
-type GenreWeight struct {
-	Genre  string  `json:"genre"`
-	Weight float64 `json:"weight"`
-}
-
-// MetricSnapshot is the persisted analytics payload.
-type MetricSnapshot struct {
-	ID              int64                      `json:"id"`
-	UserID          string                     `json:"userId"`
-	CapturedAt      time.Time                  `json:"capturedAt"`
-	TopTracks       map[string][]TrackSummary  `json:"topTracks"`
-	TopArtists      map[string][]ArtistSummary `json:"topArtists"`
-	RecentlyPlayed  []PlaybackEvent            `json:"recentlyPlayed"`
-	SavedTrackCount int                        `json:"savedTrackCount"`
-	PlaylistCount   int                        `json:"playlistCount"`
-	FollowingCount  int                        `json:"followingCount"`
-	Stats           SnapshotStats              `json:"stats"`
-}
-
-// SnapshotPoint is a trimmed representation for trend charts.
-type SnapshotPoint struct {
-	CapturedAt            time.Time `json:"capturedAt"`
-	EstimatedDailyMinutes int       `json:"estimatedDailyMinutes"`
-	UniqueArtistCount     int       `json:"uniqueArtistCount"`
-	UniqueGenreCount      int       `json:"uniqueGenreCount"`
-	ConsistencyScore      float64   `json:"consistencyScore"`
-	DiscoveryScore        float64   `json:"discoveryScore"`
-	ReplayScore           float64   `json:"replayScore"`
-	VarietyScore          float64   `json:"varietyScore"`
-	SessionCount          int       `json:"sessionCount"`
-	AverageSessionMinutes float64   `json:"averageSessionMinutes"`
-	WeekendListeningShare float64   `json:"weekendListeningShare"`
-	NightOwlScore         float64   `json:"nightOwlScore"`
-	TopTrackConcentration float64   `json:"topTrackConcentration"`
-}
-
-// Recommendation describes a personalized user suggestion.
-type Recommendation struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Confidence  string `json:"confidence"`
-	Type        string `json:"type"`
-}
-
-// GenreRecommendation suggests a genre direction.
-type GenreRecommendation struct {
-	Genre      string `json:"genre"`
-	Reason     string `json:"reason"`
-	Confidence string `json:"confidence"`
-}
-
-// ArtistRecommendation suggests an artist to explore.
-type ArtistRecommendation struct {
-	Name        string `json:"name"`
-	Reason      string `json:"reason"`
-	ExternalURL string `json:"externalUrl"`
-	Confidence  string `json:"confidence"`
-}
-
-// SongRecommendation suggests a track to queue next.
-type SongRecommendation struct {
-	Track       string `json:"track"`
 	Artist      string `json:"artist"`
-	Reason      string `json:"reason"`
+	ImageURL    string `json:"imageUrl"`
+	ReleaseYear int    `json:"releaseYear"`
+	TrackCount  int    `json:"trackCount"`
+	TrackTotal  int    `json:"trackTotal"`
 	ExternalURL string `json:"externalUrl"`
-	Confidence  string `json:"confidence"`
 }
 
-// InsightResponse returns recommendation content to the UI.
-type InsightResponse struct {
-	GeneratedAt           time.Time              `json:"generatedAt"`
-	Narrative             string                 `json:"narrative"`
-	Recommendations       []Recommendation       `json:"recommendations"`
-	GenreRecommendations  []GenreRecommendation  `json:"genreRecommendations"`
-	ArtistRecommendations []ArtistRecommendation `json:"artistRecommendations"`
-	SongRecommendations   []SongRecommendation   `json:"songRecommendations"`
-	OpenAIGenerated       bool                   `json:"openAIGenerated"`
+// DecadeStat counts how many of a period's top tracks were released in a
+// given decade, taken from album release dates.
+type DecadeStat struct {
+	Decade int `json:"decade"`
+	Count  int `json:"count"`
+}
+
+// ListeningRun is the longest unbroken stretch of back-to-back plays found
+// in the recent playback window.
+type ListeningRun struct {
+	Minutes   int       `json:"minutes"`
+	Tracks    int       `json:"tracks"`
+	StartedAt time.Time `json:"startedAt"`
+}
+
+// PeriodMetrics holds every ranked list for one time window.
+type PeriodMetrics struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Source string `json:"source"`
+
+	Artists []ArtistStat `json:"artists"`
+	Tracks  []TrackStat  `json:"tracks"`
+	Genres  []GenreStat  `json:"genres"`
+
+	// NewArtists are artists in this window that are absent from the
+	// year-long list. Empty for the year window itself.
+	NewArtists []ArtistStat `json:"newArtists"`
+
+	TopAlbum *AlbumStat   `json:"topAlbum"`
+	Decades  []DecadeStat `json:"decades"`
+
+	// DeepCut is the least widely known artist in the period's top list.
+	DeepCut *ArtistStat `json:"deepCut"`
+
+	DistinctArtists int `json:"distinctArtists"`
+	DistinctAlbums  int `json:"distinctAlbums"`
+
+	// TotalPlays and TotalMinutes are only measurable for the week window,
+	// which is built from real playback events rather than ranked lists.
+	TotalPlays   int  `json:"totalPlays"`
+	TotalMinutes int  `json:"totalMinutes"`
+	HasTotals    bool `json:"hasTotals"`
+}
+
+// ReplayStat is the single most repeated track in the playback window.
+type ReplayStat struct {
+	Track TrackStat `json:"track"`
+	Plays int       `json:"plays"`
+}
+
+// LibraryStats are plain counts from the user's Spotify library.
+type LibraryStats struct {
+	SavedTracks int `json:"savedTracks"`
+	Playlists   int `json:"playlists"`
+	Following   int `json:"following"`
+}
+
+// Dashboard is the complete payload the UI renders.
+type Dashboard struct {
+	UserID       string          `json:"userId"`
+	Profile      UserProfile     `json:"profile"`
+	CapturedAt   time.Time       `json:"capturedAt"`
+	Periods      []PeriodMetrics `json:"periods"`
+	MostReplayed *ReplayStat     `json:"mostReplayed"`
+	LongestRun   *ListeningRun   `json:"longestRun"`
+	Library      LibraryStats    `json:"library"`
+
+	// PlayedAt carries raw playback timestamps so the browser can bucket them
+	// into a listening clock in the viewer's own timezone.
+	PlayedAt []time.Time `json:"playedAt"`
 }
